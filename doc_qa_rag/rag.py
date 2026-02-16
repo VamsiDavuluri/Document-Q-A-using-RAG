@@ -1,102 +1,125 @@
 import os
-import chromadb
 import requests
-from chromadb.config import Settings
-from chromadb.utils import embedding_functions
-from openai import OpenAI
+from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# --- OPTION 1: OLLAMA (Local & Free) ---
-OLLAMA_BASE_URL = "http://localhost:11434/api"
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b") # Or "mistral", "llama3", etc.
+# --- CLOUD CONFIGURATION ---
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "document-qa")
 
-# --- OPTION 2: GROQ (Free Tier API) ---
-# If you have a Groq key (get one for free at console.groq.com)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN") # Hugging Face Token for Embeddings
 
-# Initialize OpenAI client (can also be used for Groq)
-if GROQ_API_KEY:
-    client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
-else:
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Hugging Face Inference API Settings
+# We use a popular small embedding model: all-MiniLM-L6-v2
+HF_EMBEDDING_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
-# Initialize ChromaDB client with persistence
-DB_PATH = "chroma_db"
-chroma_client = chromadb.PersistentClient(path=DB_PATH)
+# --- INITIALIZE PINECONE ---
+pc = None
+if PINECONE_API_KEY:
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    # Check if index exists, if not create it (Handled manually by user usually, but we check)
+    if PINECONE_INDEX_NAME not in pc.list_indexes().names():
+        pc.create_index(
+            name=PINECONE_INDEX_NAME,
+            dimension=384, # all-MiniLM-L6-v2 dimension
+            metric="cosine",
+            spec=ServerlessSpec(cloud="aws", region="us-east-1")
+        )
 
-# --- LOCAL EMBEDDING FUNCTION (Free) ---
-# This runs locally on your CPU/GPU and doesn't need credits.
-local_ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-
-def get_or_create_collection(name="rag_local_collection"):
-    """Gets or creates a ChromaDB collection using local embeddings."""
-    return chroma_client.get_or_create_collection(name=name, embedding_function=local_ef)
-
-def add_to_vector_db(collection, chunks, filename):
-    """
-    Adds chunks to ChromaDB. Embeddings are generated locally by the collection's EF.
-    """
-    ids = [f"{filename}_{i}" for i in range(len(chunks))]
-    metadatas = [{"filename": filename, "chunk_index": i} for i in range(len(chunks))]
+def get_huggingface_embeddings(text_list):
+    """Generates embeddings using Hugging Face Inference API."""
+    if not HF_TOKEN:
+        raise Exception("HF_TOKEN is missing in environment variables.")
     
-    collection.add(
-        ids=ids,
-        documents=chunks,
-        metadatas=metadatas
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    response = requests.post(HF_EMBEDDING_URL, headers=headers, json={"inputs": text_list})
+    
+    if response.status_code != 200:
+        raise Exception(f"HF API Error: {response.text}")
+        
+    return response.json()
+
+def add_to_vector_db(chunks, filename):
+    """
+    Embeds chunks via HF and stores them in Pinecone.
+    """
+    if not pc:
+        raise Exception("Pinecone not initialized. Check PINECONE_API_KEY.")
+    
+    index = pc.Index(PINECONE_INDEX_NAME)
+    
+    # Generate embeddings
+    embeddings = get_huggingface_embeddings(chunks)
+    
+    # Prepare vectors for Pinecone
+    vectors = []
+    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        vectors.append({
+            "id": f"{filename}_{i}",
+            "values": embedding,
+            "metadata": {
+                "text": chunk,
+                "filename": filename,
+                "chunk_index": i
+            }
+        })
+    
+    # Upsert to Pinecone
+    index.upsert(vectors=vectors)
+
+def query_rag(question):
+    """
+    Queries Pinecone for relevant chunks and generates an answer via Groq.
+    """
+    if not pc:
+        raise Exception("Pinecone not initialized.")
+    if not GROQ_API_KEY:
+        raise Exception("GROQ_API_KEY is missing.")
+
+    index = pc.Index(PINECONE_INDEX_NAME)
+    
+    # 1. Embed the question
+    q_embedding = get_huggingface_embeddings([question])[0]
+    
+    # 2. Query Pinecone
+    results = index.query(
+        vector=q_embedding,
+        top_k=5,
+        include_metadata=True
     )
-
-def query_rag(collection, question):
-    """
-    Queries ChromaDB for relevant chunks and generates an answer locally or via free API.
-    """
-    # 1. Query ChromaDB (Local embedding is handled automatically)
-    results = collection.query(
-        query_texts=[question],
-        n_results=5
-    )
     
-    retrieved_chunks = results['documents'][0]
-    retrieved_metadata = results['metadatas'][0]
-    
-    if not retrieved_chunks:
+    matches = results.get('matches', [])
+    if not matches:
         return "I couldn’t find that in the uploaded document.", []
     
-    # 2. Prepare context
+    # 3. Prepare context
+    retrieved_chunks = [m['metadata']['text'] for m in matches]
+    sources = [int(m['metadata']['chunk_index']) for m in matches]
     context = "\n\n".join(retrieved_chunks)
-    prompt = f"Answer the user's question ONLY based on the provided context below. If the answer is not in the context, respond strictly with: 'I couldn’t find that in the uploaded document.'\n\nContext:\n{context}\n\nQuestion: {question}"
     
-    # 3. Generate Answer (Try Ollama first, then Groq, then OpenAI)
-    try:
-        # Try Ollama (Local)
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=30
-        )
-        if response.status_code == 200:
-            answer = response.json().get("response", "")
-            sources = [m['chunk_index'] for m in retrieved_metadata]
-            return answer, sources
-    except Exception:
-        pass # Fallback to API if Ollama is not running
+    # 4. Generate Answer via Groq
+    prompt = f"""
+    Answer the user's question ONLY based on the provided context below.
+    If the answer is not in the context, respond strictly with: "I couldn’t find that in the uploaded document."
 
-    # Try Groq or OpenAI
-    try:
-        model_name = "llama-3.1-8b-instant" if GROQ_API_KEY else "gpt-4o-mini"
-        chat_response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        answer = chat_response.choices[0].message.content
-        sources = [m['chunk_index'] for m in retrieved_metadata]
-        return answer, sources
-    except Exception as e:
-        return f"Error: No local LLM running and API failed. {str(e)}", []
+    Context:
+    {context}
+
+    Question: {question}
+    """
+    
+    from openai import OpenAI
+    client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+    
+    chat_response = client.chat.completions.create(
+        model="llama3-8b-8192", # Using a common Groq model
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    
+    answer = chat_response.choices[0].message.content
+    return answer, sources

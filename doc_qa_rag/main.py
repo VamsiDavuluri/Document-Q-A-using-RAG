@@ -5,26 +5,29 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from doc_qa_rag.utils import extract_text_from_pdf, extract_text_from_txt, chunk_text
-from doc_qa_rag.rag import get_or_create_collection, add_to_vector_db, query_rag
+from doc_qa_rag.rag import add_to_vector_db, query_rag
 
 app = FastAPI(title="Document Q&A using RAG")
 
 # Temporary directory for file uploads
-UPLOAD_DIR = "temp_uploads"
+# Note: Vercel only allows writing to /tmp
+UPLOAD_DIR = "/tmp/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Static files directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-os.makedirs(STATIC_DIR, exist_ok=True)
 
 class QuestionRequest(BaseModel):
     question: str
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    with open(os.path.join(STATIC_DIR, "index.html"), "r") as f:
-        return f.read()
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r") as f:
+            return f.read()
+    return "<h1>Welcome to Document Q&A RAG</h1><p>Frontend not found.</p>"
 
 @app.get("/health")
 async def health_check():
@@ -57,9 +60,8 @@ async def upload_document(file: UploadFile = File(...)):
         # Chunk text
         chunks = chunk_text(text)
         
-        # Store in ChromaDB
-        collection = get_or_create_collection()
-        add_to_vector_db(collection, chunks, filename)
+        # Store in Vector DB (Pinecone)
+        add_to_vector_db(chunks, filename)
         
         return {
             "message": "File uploaded and processed successfully",
@@ -78,8 +80,7 @@ async def upload_document(file: UploadFile = File(...)):
 @app.post("/ask")
 async def ask_question(request: QuestionRequest):
     try:
-        collection = get_or_create_collection()
-        answer, sources = query_rag(collection, request.question)
+        answer, sources = query_rag(request.question)
         
         return {
             "question": request.question,
