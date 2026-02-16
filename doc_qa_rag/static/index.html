@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Q&A - RAG</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --success: #22c55e;
+            --error: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .upload-section {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 30px;
+            border-radius: 16px;
+            border: 2px dashed var(--border);
+            text-align: center;
+            transition: all 0.3s ease;
+            margin-bottom: 30px;
+        }
+
+        .upload-section:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .upload-label {
+            display: inline-block;
+            padding: 12px 24px;
+            background: var(--primary);
+            color: white;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .upload-label:hover {
+            background: var(--primary-hover);
+        }
+
+        .ask-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: #0f172a;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+        }
+
+        button.ask-btn {
+            padding: 14px 28px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button.ask-btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        button.ask-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .result-card {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .answer {
+            color: var(--text);
+            font-size: 1.05rem;
+            white-space: pre-wrap;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .status.success {
+            color: var(--success);
+        }
+
+        .status.error {
+            color: var(--error);
+        }
+
+        .status.loading {
+            color: var(--primary);
+        }
+
+        .sources {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+            padding-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Document Q&A</h1>
+            <p class="subtitle">Upload a PDF or TXT and ask questions based on its content.</p>
+        </header>
+
+        <div class="upload-section" id="drop-zone">
+            <p style="margin-bottom: 15px; color: var(--text-secondary);">Select a file to get started</p>
+            <label for="file-upload" class="upload-label">
+                Choose PDF / TXT
+            </label>
+            <input type="file" id="file-upload" accept=".pdf,.txt">
+            <div id="upload-status" class="status"></div>
+        </div>
+
+        <div class="ask-section">
+            <input type="text" id="question-input" placeholder="What would you like to know?" disabled>
+            <button class="ask-btn" id="ask-button" disabled>Ask</button>
+        </div>
+
+        <div class="result-card" id="result-card">
+            <div class="result-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Answer
+            </div>
+            <div class="answer" id="answer-text"></div>
+            <div class="sources" id="sources-text"></div>
+        </div>
+    </div>
+
+    <script>
+        const fileUpload = document.getElementById('file-upload');
+        const uploadStatus = document.getElementById('upload-status');
+        const questionInput = document.getElementById('question-input');
+        const askButton = document.getElementById('ask-button');
+        const resultCard = document.getElementById('result-card');
+        const answerText = document.getElementById('answer-text');
+        const sourcesText = document.getElementById('sources-text');
+
+        // Handle File Upload
+        fileUpload.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadStatus.className = 'status loading';
+            uploadStatus.textContent = 'Processing document...';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    uploadStatus.className = 'status success';
+                    uploadStatus.textContent = `Successfully processed: ${data.filename} (${data.number_of_chunks} chunks)`;
+                    questionInput.disabled = false;
+                    askButton.disabled = false;
+                } else {
+                    uploadStatus.className = 'status error';
+                    uploadStatus.textContent = data.detail || 'Upload failed';
+                }
+            } catch (err) {
+                uploadStatus.className = 'status error';
+                uploadStatus.textContent = 'Error: ' + err.message;
+            }
+        });
+
+        // Handle Ask Question
+        askButton.addEventListener('click', async () => {
+            const question = questionInput.value.trim();
+            if (!question) return;
+
+            askButton.disabled = true;
+            askButton.textContent = 'Thinking...';
+            resultCard.style.display = 'none';
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultCard.style.display = 'block';
+                    answerText.textContent = data.answer;
+                    sourcesText.textContent = 'Source chunks: ' + data.sources.join(', ');
+                } else {
+                    alert('Error: ' + data.detail);
+                }
+            } catch (err) {
+                alert('Connection error');
+            } finally {
+                askButton.disabled = false;
+                askButton.textContent = 'Ask';
+            }
+        });
+
+        // Allow Enter key to trigger ask
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') askButton.click();
+        });
+    </script>
+</body>
+
+</html>
