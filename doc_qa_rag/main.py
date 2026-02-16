@@ -2,12 +2,32 @@ import os
 import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
-from doc_qa_rag.utils import extract_text_from_pdf, extract_text_from_txt, chunk_text
-from doc_qa_rag.rag import add_to_vector_db, query_rag
+
+try:
+    from doc_qa_rag.utils import extract_text_from_pdf, extract_text_from_txt, chunk_text
+    from doc_qa_rag.rag import add_to_vector_db, query_rag
+except ImportError:
+    from utils import extract_text_from_pdf, extract_text_from_txt, chunk_text
+    from rag import add_to_vector_db, query_rag
 
 app = FastAPI(title="Document Q&A using RAG")
+
+# Add Exception Middleware to see errors in the browser
+class ExceptionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as e:
+            import traceback
+            return JSONResponse(
+                status_code=500,
+                content={"error": str(e), "traceback": traceback.format_exc()}
+            )
+
+app.add_middleware(ExceptionMiddleware)
 
 # Temporary directory for file uploads
 # Note: Vercel only allows writing to /tmp
