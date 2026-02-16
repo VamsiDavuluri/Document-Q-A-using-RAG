@@ -20,15 +20,28 @@ HF_EMBEDDING_URL = "https://api-inference.huggingface.co/pipeline/feature-extrac
 # --- INITIALIZE PINECONE ---
 pc = None
 if PINECONE_API_KEY:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    # Check if index exists, if not create it (Handled manually by user usually, but we check)
-    if PINECONE_INDEX_NAME not in pc.list_indexes().names():
-        pc.create_index(
-            name=PINECONE_INDEX_NAME,
-            dimension=384, # all-MiniLM-L6-v2 dimension
-            metric="cosine",
-            spec=ServerlessSpec(cloud="aws", region="us-east-1")
-        )
+    try:
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+    except Exception as e:
+        print(f"Error initializing Pinecone: {e}")
+        pc = None
+
+def ensure_index_exists():
+    """Initializes Pinecone index if it doesn't exist. Called during first operation."""
+    global pc
+    if not pc:
+        return
+        
+    try:
+        if PINECONE_INDEX_NAME not in [idx.name for idx in pc.list_indexes()]:
+            pc.create_index(
+                name=PINECONE_INDEX_NAME,
+                dimension=384, # all-MiniLM-L6-v2 dimension
+                metric="cosine",
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
+            )
+    except Exception as e:
+        print(f"Error checking/creating index: {e}")
 
 def get_huggingface_embeddings(text_list):
     """Generates embeddings using Hugging Face Inference API."""
@@ -47,6 +60,7 @@ def add_to_vector_db(chunks, filename):
     """
     Embeds chunks via HF and stores them in Pinecone.
     """
+    ensure_index_exists()
     if not pc:
         raise Exception("Pinecone not initialized. Check PINECONE_API_KEY.")
     
@@ -75,6 +89,7 @@ def query_rag(question):
     """
     Queries Pinecone for relevant chunks and generates an answer via Groq.
     """
+    ensure_index_exists()
     if not pc:
         raise Exception("Pinecone not initialized.")
     if not GROQ_API_KEY:
