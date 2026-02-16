@@ -23,11 +23,20 @@ class QuestionRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        with open(index_path, "r") as f:
-            return f.read()
-    return "<h1>Welcome to Document Q&A RAG</h1><p>Frontend not found.</p>"
+    # Try multiple common paths for Vercel
+    paths_to_try = [
+        os.path.join(STATIC_DIR, "index.html"),
+        os.path.join(BASE_DIR, "static", "index.html"),
+        "doc_qa_rag/static/index.html",
+        "static/index.html"
+    ]
+    
+    for path in paths_to_try:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return f.read()
+    
+    return "<h1>Welcome to Document Q&A RAG</h1><p>Frontend not found. Please check deployment settings.</p>"
 
 @app.get("/health")
 async def health_check():
