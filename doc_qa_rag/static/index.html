@@ -278,7 +278,8 @@
                     askButton.disabled = false;
                 } else {
                     uploadStatus.className = 'status error';
-                    uploadStatus.textContent = data.detail || 'Upload failed';
+                    const errorMsg = data.detail || 'Upload failed';
+                    uploadStatus.textContent = typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg;
                 }
             } catch (err) {
                 uploadStatus.className = 'status error';
