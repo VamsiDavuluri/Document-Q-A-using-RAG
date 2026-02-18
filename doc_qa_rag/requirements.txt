@@ -4,5 +4,5 @@ python-multipart
 pymupdf
 python-dotenv
 requests
-pinecone-client
+pinecone
 openai
