@@ -108,7 +108,6 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        import os
         debug_info = {
             "pinecone_key": "Detected" if os.getenv("PINECONE_API_KEY") else "MISSING",
             "groq_key": "Detected" if os.getenv("GROQ_API_KEY") else "MISSING",
