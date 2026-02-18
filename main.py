@@ -10,6 +10,7 @@ try:
     from doc_qa_rag.utils import extract_text_from_pdf, extract_text_from_txt, chunk_text
     from doc_qa_rag.rag import add_to_vector_db, query_rag
 except ImportError:
+    # Fallback for local execution if not as a package
     from doc_qa_rag.utils import extract_text_from_pdf, extract_text_from_txt, chunk_text
     from doc_qa_rag.rag import add_to_vector_db, query_rag
 
@@ -22,15 +23,15 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         except Exception as e:
             import traceback
+            # Return JSON in the 'detail' format that FastAPI/Frontend expects
             return JSONResponse(
                 status_code=500,
-                content={"error": str(e), "traceback": traceback.format_exc()}
+                content={"detail": {"error": str(e), "traceback": traceback.format_exc()}}
             )
 
 app.add_middleware(ExceptionMiddleware)
 
 # Temporary directory for file uploads
-# Note: Vercel only allows writing to /tmp
 UPLOAD_DIR = "/tmp/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -43,7 +44,6 @@ class QuestionRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    # Try multiple common paths for Vercel
     paths_to_try = [
         os.path.join(STATIC_DIR, "index.html"),
         os.path.join(BASE_DIR, "static", "index.html"),
@@ -60,7 +60,15 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    import os
+    return {
+        "status": "ok",
+        "diagnostics": {
+            "pinecone_key": "Detected" if os.getenv("PINECONE_API_KEY") else "MISSING",
+            "groq_key": "Detected" if os.getenv("GROQ_API_KEY") else "MISSING",
+            "hf_token": "Detected" if os.getenv("HF_TOKEN") else "MISSING"
+        }
+    }
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
