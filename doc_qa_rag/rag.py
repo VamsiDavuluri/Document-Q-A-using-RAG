@@ -1,4 +1,5 @@
 import os
+# Force redeploy with latest cloud configuration
 import requests
 from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
