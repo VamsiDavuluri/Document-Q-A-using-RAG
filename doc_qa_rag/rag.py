@@ -10,32 +10,45 @@ load_dotenv()
 # --- CLOUD CONFIGURATION ---
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "document-qa")
-
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-HF_TOKEN = os.getenv("HF_TOKEN") # Hugging Face Token for Embeddings
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+# Debug: Print key status (not the keys themselves)
+print(f"DEBUG: PINECONE_API_KEY exists: {bool(PINECONE_API_KEY)}")
+print(f"DEBUG: GROQ_API_KEY exists: {bool(GROQ_API_KEY)}")
+print(f"DEBUG: HF_TOKEN exists: {bool(HF_TOKEN)}")
 
 # Hugging Face Inference API Settings
-# We use a popular small embedding model: all-MiniLM-L6-v2
 HF_EMBEDDING_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 # --- INITIALIZE PINECONE ---
 pc = None
-if PINECONE_API_KEY:
+def get_pinecone_client():
+    global pc
+    if pc is not None:
+        return pc
+        
+    api_key = os.getenv("PINECONE_API_KEY")
+    if not api_key:
+        print("ERROR: PINECONE_API_KEY is empty or None in environment!")
+        return None
+        
     try:
-        pc = Pinecone(api_key=PINECONE_API_KEY)
+        pc = Pinecone(api_key=api_key)
+        return pc
     except Exception as e:
-        print(f"Error initializing Pinecone: {e}")
-        pc = None
+        print(f"ERROR: Failed to initialize Pinecone: {e}")
+        return None
 
 def ensure_index_exists():
     """Initializes Pinecone index if it doesn't exist. Called during first operation."""
-    global pc
-    if not pc:
+    client = get_pinecone_client()
+    if not client:
         return
         
     try:
-        if PINECONE_INDEX_NAME not in [idx.name for idx in pc.list_indexes()]:
-            pc.create_index(
+        if PINECONE_INDEX_NAME not in [idx.name for idx in client.list_indexes()]:
+            client.create_index(
                 name=PINECONE_INDEX_NAME,
                 dimension=384, # all-MiniLM-L6-v2 dimension
                 metric="cosine",
@@ -62,10 +75,11 @@ def add_to_vector_db(chunks, filename):
     Embeds chunks via HF and stores them in Pinecone.
     """
     ensure_index_exists()
-    if not pc:
-        raise Exception("Pinecone not initialized. Check PINECONE_API_KEY.")
+    client = get_pinecone_client()
+    if not client:
+        raise Exception("Pinecone not initialized. Check PINECONE_API_KEY in Vercel settings.")
     
-    index = pc.Index(PINECONE_INDEX_NAME)
+    index = client.Index(PINECONE_INDEX_NAME)
     
     # Generate embeddings
     embeddings = get_huggingface_embeddings(chunks)
@@ -91,12 +105,13 @@ def query_rag(question):
     Queries Pinecone for relevant chunks and generates an answer via Groq.
     """
     ensure_index_exists()
-    if not pc:
-        raise Exception("Pinecone not initialized.")
+    client = get_pinecone_client()
+    if not client:
+        raise Exception("Pinecone client could not be initialized. Check API Key.")
     if not GROQ_API_KEY:
         raise Exception("GROQ_API_KEY is missing.")
 
-    index = pc.Index(PINECONE_INDEX_NAME)
+    index = client.Index(PINECONE_INDEX_NAME)
     
     # 1. Embed the question
     q_embedding = get_huggingface_embeddings([question])[0]
