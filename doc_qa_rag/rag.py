@@ -19,8 +19,9 @@ print(f"DEBUG: GROQ_API_KEY exists: {bool(GROQ_API_KEY)}")
 print(f"DEBUG: HF_TOKEN exists: {bool(HF_TOKEN)}")
 
 # Hugging Face Inference API Settings
-# The old api-inference URL is deprecated. Using the new router with the explicit feature-extraction pipeline.
-HF_EMBEDDING_URL = "https://router.huggingface.co/hf-inference/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+# We use BAAI/bge-small-en-v1.5 as it defaults to feature-extraction task.
+# Dimension is 384, same as MiniLM.
+HF_EMBEDDING_URL = "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5"
 
 # --- INITIALIZE PINECONE ---
 pc = None
@@ -51,7 +52,7 @@ def ensure_index_exists():
         if PINECONE_INDEX_NAME not in [idx.name for idx in client.list_indexes()]:
             client.create_index(
                 name=PINECONE_INDEX_NAME,
-                dimension=384, # all-MiniLM-L6-v2 dimension
+                dimension=384, # BGE-small dimension
                 metric="cosine",
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
