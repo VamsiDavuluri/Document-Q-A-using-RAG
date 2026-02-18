@@ -153,7 +153,7 @@ def query_rag(question):
     client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
     
     chat_response = client.chat.completions.create(
-        model="llama3-8b-8192", # Using a common Groq model
+        model="llama-3.1-8b-instant", # Updated from decommissioned llama3-8b-8192
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
