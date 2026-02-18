@@ -63,7 +63,11 @@ def get_huggingface_embeddings(text_list):
     if not HF_TOKEN:
         raise Exception("HF_TOKEN is missing in environment variables.")
     
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "X-Wait-For-Model": "true",
+        "X-Task": "feature-extraction"
+    }
     response = requests.post(HF_EMBEDDING_URL, headers=headers, json={"inputs": text_list})
     
     if response.status_code != 200:
