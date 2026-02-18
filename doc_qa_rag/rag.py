@@ -19,8 +19,8 @@ print(f"DEBUG: GROQ_API_KEY exists: {bool(GROQ_API_KEY)}")
 print(f"DEBUG: HF_TOKEN exists: {bool(HF_TOKEN)}")
 
 # Hugging Face Inference API Settings
-# The old api-inference URL is deprecated. Using the new router endpoint.
-HF_EMBEDDING_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
+# The old api-inference URL is deprecated. Using the new router with the explicit feature-extraction pipeline.
+HF_EMBEDDING_URL = "https://router.huggingface.co/hf-inference/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 # --- INITIALIZE PINECONE ---
 pc = None
