@@ -140,8 +140,12 @@ def query_rag(question):
     
     # 4. Generate Answer via Groq
     prompt = f"""
-    Answer the user's question ONLY based on the provided context below.
-    If the answer is not in the context, respond strictly with: "I couldn’t find that in the uploaded document."
+    You are a helpful AI assistant tasked with answering questions about an uploaded document.
+    Use the provided context to answer the user's question in a clear, conversational, and informative way.
+    
+    If the user asks for an explanation or summary of the document, use the provided context to highlight the key details and main points.
+    
+    If you truly cannot find the answer in the context, politely let the user know, but try to be as helpful as possible based on what IS available.
 
     Context:
     {context}
