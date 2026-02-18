@@ -1,14 +1,14 @@
 {
     "builds": [
         {
-            "src": "doc_qa_rag/main.py",
+            "src": "main.py",
             "use": "@vercel/python"
         }
     ],
     "routes": [
         {
             "src": "/(.*)",
-            "dest": "doc_qa_rag/main.py"
+            "dest": "main.py"
         }
     ]
 }
