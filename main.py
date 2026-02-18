@@ -100,7 +100,16 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+        import os
+        debug_info = {
+            "pinecone_key": "Detected" if os.getenv("PINECONE_API_KEY") else "MISSING",
+            "groq_key": "Detected" if os.getenv("GROQ_API_KEY") else "MISSING",
+            "hf_token": "Detected" if os.getenv("HF_TOKEN") else "MISSING"
+        }
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error: {str(e)} | Diagnostics: {debug_info}"
+        )
     finally:
         # Cleanup
         if os.path.exists(file_path):
